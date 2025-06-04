@@ -1,4 +1,7 @@
 import './style.css';
+import 'ol/ol.css';
+import redDotUrl from './assets/red-dot.svg';
+import blueDotUrl from './assets/blue-dot.svg';
 
 import * as OlSource from 'ol/source';
 import * as OlStyle from 'ol/style';
@@ -34,17 +37,21 @@ function initializeMap(center: Coordinate, mapDefaultZoom: number) {
   });
 }
 
-function addVectorLayer(map: OlMap) {
-  const features: OlCollection<OlFeature<OlGeom.Point>> = new OlCollection([]);
-  const source = new OlSource.Vector({ features });
-  const style = new OlStyle.Style({
+function vectorLayerStyle(imageSrc: string): OlStyle.Style {
+  return new OlStyle.Style({
     image: new OlStyle.Icon({
       anchor: [0.5, 0.5],
       anchorXUnits: "fraction",
       anchorYUnits: "fraction",
-      src: "https://upload.wikimedia.org/wikipedia/commons/e/ec/RedDot.svg",
+      src: imageSrc,
     }),
   });
+}
+
+function addVectorLayer(map: OlMap, imageSrc: string) {
+  const features: OlCollection<OlFeature<OlGeom.Point>> = new OlCollection([]);
+  const source = new OlSource.Vector({ features });
+  const style = vectorLayerStyle(imageSrc);
   const vectorLayer = new OlLayer.Vector({ source, style });
 
   map.addLayer(vectorLayer);
@@ -52,19 +59,19 @@ function addVectorLayer(map: OlMap) {
   return [features, vectorLayer] as const;
 }
 
-function addMapPoint(vectorSources: OlCollection<OlFeature<OlGeom.Point>>, lat: number, lon: number, chargingStation: ChargingStation) {
+function addMapPoint(chargingStationsVectorLayerSource: OlCollection<OlFeature<OlGeom.Point>>, lat: number, lon: number, chargingStation: ChargingStation) {
   const feature = new OlFeature({
-    geometry: new OlGeom.Point(OlProj.transform([lon, lat], "EPSG:4326", "EPSG:3857")),
+    geometry: new OlGeom.Point(OlProj.transform([lon, lat], "EPSG:4326", "EPSG:3857"))
   });
   feature.setProperties({ chargingStation });
-  vectorSources.push(feature);
+  chargingStationsVectorLayerSource.push(feature);
 }
 
-function updateChargingStationPoints(vectorSources: OlCollection<OlFeature<OlGeom.Point>>, chargingStations: Map<number, ChargingStation>) {
+function updateChargingStationPoints(chargingStationsVectorLayerSource: OlCollection<OlFeature<OlGeom.Point>>, chargingStations: Map<number, ChargingStation>) {
   console.log("updateChargingStationPoints", chargingStations);
-  vectorSources.clear();
+  chargingStationsVectorLayerSource.clear();
   chargingStations.forEach((chargingStation) => {
-    addMapPoint(vectorSources, chargingStation.Latitude, chargingStation.Longitude, chargingStation);
+    addMapPoint(chargingStationsVectorLayerSource, chargingStation.Latitude, chargingStation.Longitude, chargingStation);
   });
 }
 
@@ -122,24 +129,50 @@ async function init() {
   const chargingStations: Map<number, ChargingStation> = new Map(DbChargingStations.map(c => [c.idCityLayer, c]));
 
   const map = initializeMap([initialLon, initialLat], mapDefaultZoom);
-  const [vectorSources, _vectorLayer] = addVectorLayer(map);
+  const [chargingStationsVectorLayerSource, _chargingStationsVectorLayer] = addVectorLayer(map, redDotUrl);
+  const [currentLocationVectorLayerSource, _currentLocationVectorLayer] = addVectorLayer(map, blueDotUrl);
 
   map.on("singleclick", async function (event) {
-    const coordinate = event.coordinate;
-    const [lon, lat] = OlProj.toLonLat(coordinate);
+    const [lon, lat] = OlProj.toLonLat(event.coordinate);
     console.log(lon, lat);
     // vectorLayer.getFeatures(event.pixel).then((fs) => console.log(fs.map((f) => f.getProperties())));
     fetchChargingStationsAround(lon, lat, chargingStations);
-    updateChargingStationPoints(vectorSources, chargingStations);
+    updateChargingStationPoints(chargingStationsVectorLayerSource, chargingStations);
   });
 
-  updateChargingStationPoints(vectorSources, chargingStations);
+  updateChargingStationPoints(chargingStationsVectorLayerSource, chargingStations);
 
   // for (const g of gridPoints([6.880377663797766, 53.792176031139206], [10.334992254695134, 53.099881357257715])) {
   //   await fetchChargingStationsAround(g[0], g[1], chargingStations);
   //   updateChargingStationPoints(vectorSources, chargingStations);
   //   await sleep(500);
   // }
+
+  function initializeGeolocation() {
+
+    function success(position: GeolocationPosition) {
+      console.log("success", position);
+      const lon = position.coords.longitude;
+      const lat = position.coords.latitude;
+      currentLocationVectorLayerSource.clear();
+      const feature = new OlFeature({
+        geometry: new OlGeom.Point(OlProj.transform([lon, lat], "EPSG:4326", "EPSG:3857")),
+      });
+      currentLocationVectorLayerSource.push(feature);
+    }
+
+    function error(...args: unknown[]) {
+      console.log("error", args);
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(success, error, { enableHighAccuracy: true });
+    } else {
+      console.log("navigator.geolocation is not available");
+    }
+  }
+
+  initializeGeolocation();
 }
 
 init();
