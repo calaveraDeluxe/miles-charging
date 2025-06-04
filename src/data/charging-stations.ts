@@ -8,15 +8,15 @@ type CompressedChargingStation = {
   a?: string;
 };
 
-function compress(station: ChargingStation): CompressedChargingStation {
-  return {
-    i: station.idCityLayer,
-    lo: station.Longitude,
-    la: station.Latitude,
-    n: station.Station_Name || undefined,
-    a: station.Station_Address || undefined
-  };
-}
+// function compress(station: ChargingStation): CompressedChargingStation {
+//   return {
+//     i: station.idCityLayer,
+//     lo: station.Longitude,
+//     la: station.Latitude,
+//     n: station.Station_Name || undefined,
+//     a: station.Station_Address || undefined
+//   };
+// }
 
 function unCompress(station: CompressedChargingStation): ChargingStation {
   return {
